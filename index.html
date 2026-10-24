@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>微型生态实验室</title>
+
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+
+<body>
+  <main class="page">
+
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">INTERACTIVE ECOLOGY LAB</p>
+        <h1>微型生态实验室</h1>
+        <p class="subtitle">
+          放入生命，改变条件，观察一个小世界如何变化。
+        </p>
+      </div>
+
+      <span class="version-tag">交互原型 V1.0</span>
+    </header>
+
+    <section class="intro">
+      <strong>第一次使用：</strong>
+      点击“开始模拟”观察变化；选择右侧生物后，点击生态区域即可添加。
+      你可以尝试让三类生物持续共存，也可以自由探索。
+    </section>
+
+    <div class="workspace">
+
+      <section class="simulation-panel">
+
+        <div class="panel-heading">
+          <h2>生态区域</h2>
+          <span id="runState" class="state-tag">已暂停</span>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas
+            id="world"
+            width="900"
+            height="540"
+            aria-label="生态模拟区域，使用鼠标点击添加生物"
+          ></canvas>
+        </div>
+
+        <div class="world-footer">
+          <span id="toolHint">当前工具：添加植物</span>
+          <span>模拟时间：<strong id="timeText">0 秒</strong></span>
+        </div>
+
+        <div class="legend">
+          <span><i class="dot plant-color"></i>植物</span>
+          <span><i class="dot herb-color"></i>食草动物</span>
+          <span><i class="triangle"></i>捕食者</span>
+        </div>
+
+      </section>
+
+      <aside class="controls">
+
+        <section class="control-section">
+          <h2>1. 添加生命</h2>
+          <p class="help">先选类型，再点击左侧生态区域。</p>
+
+          <div class="tool-list">
+            <button
+              class="tool active"
+              data-tool="plant"
+              aria-pressed="true"
+            >
+              添加植物
+            </button>
+
+            <button
+              class="tool"
+              data-tool="herbivore"
+              aria-pressed="false"
+            >
+              添加食草动物
+            </button>
+
+            <button
+              class="tool"
+              data-tool="predator"
+              aria-pressed="false"
+            >
+              添加捕食者
+            </button>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <h2>2. 调整环境</h2>
+
+          <label class="range-label" for="growthInput">
+            植物生长速度
+            <strong id="growthValue">4 个/秒</strong>
+          </label>
+
+          <input
+            id="growthInput"
+            type="range"
+            min="0"
+            max="10"
+            step="1"
+            value="4"
+          >
+
+          <p class="help">
+            这里的“秒”指模拟时间。植物最多保留 240 个。
+          </p>
+
+          <label class="range-label" for="speedInput">
+            模拟运行速度
+            <strong id="speedValue">1×</strong>
+          </label>
+
+          <input
+            id="speedInput"
+            type="range"
+            min="1"
+            max="4"
+            step="1"
+            value="1"
+          >
+        </section>
+
+        <section class="control-section">
+          <h2>3. 控制模拟</h2>
+
+          <div class="action-buttons">
+            <button id="playButton" class="primary">
+              开始模拟
+            </button>
+
+            <button id="resetButton" class="secondary">
+              重置世界
+            </button>
+          </div>
+
+          <p class="help">
+            暂停时也能添加生物。重置会恢复初始世界与参数。
+          </p>
+        </section>
+
+        <section class="rule-note">
+          <h3>这个世界的规则</h3>
+
+          <ul>
+            <li>植物持续生长，食草动物寻找并吃掉植物。</li>
+            <li>捕食者寻找并捕食食草动物。</li>
+            <li>动物持续消耗能量，能量耗尽会死亡。</li>
+            <li>能量充足且冷却结束时，动物可以繁殖。</li>
+          </ul>
+        </section>
+
+      </aside>
+
+    </div>
+
+    <section class="stats-grid" aria-label="实时数量">
+      <div class="stat-card">
+        <span>植物</span>
+        <strong id="plantCount">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>食草动物</span>
+        <strong id="herbCount">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>捕食者</span>
+        <strong id="predCount">0</strong>
+      </div>
+    </section>
+
+    <section class="chart-panel">
+      <div class="panel-heading">
+        <h2>数量变化</h2>
+        <span class="help">显示最近约 3 分钟的模拟记录</span>
+      </div>
+
+      <canvas
+        id="chart"
+        width="900"
+        height="190"
+        aria-label="三类生物数量随模拟时间变化的折线图"
+      ></canvas>
+    </section>
+
+    <section class="events-panel">
+      <h2>最近事件</h2>
+      <ul id="eventList" aria-live="polite"></ul>
+    </section>
+
+    <footer class="page-footer">
+      本程序是探索物种关系的简化模拟，不用于科学预测。
+      为保证运行流畅，生物数量设置了上限。推荐使用电脑浏览器体验。
+    </footer>
+
+  </main>
+</body>
+</html>
