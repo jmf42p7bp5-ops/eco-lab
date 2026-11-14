@@ -1,38 +1,52 @@
 "use strict";
 
 // ========================================
-// 1. 找到网页中的元素
+// 1. 页面元素
 // ========================================
 
-const world = document.querySelector("#world");
-const ctx = world.getContext("2d");
+const $ = (selector) => document.querySelector(selector);
 
-const chart = document.querySelector("#chart");
+const world = $("#world");
+const ctx = world.getContext("2d");
+const chart = $("#chart");
 const chartCtx = chart.getContext("2d");
 
-const playButton = document.querySelector("#playButton");
-const resetButton = document.querySelector("#resetButton");
-
-const growthInput = document.querySelector("#growthInput");
-const speedInput = document.querySelector("#speedInput");
-
-const growthValue = document.querySelector("#growthValue");
-const speedValue = document.querySelector("#speedValue");
-
-const plantCount = document.querySelector("#plantCount");
-const herbCount = document.querySelector("#herbCount");
-const predCount = document.querySelector("#predCount");
-
-const timeText = document.querySelector("#timeText");
-const runState = document.querySelector("#runState");
-const toolHint = document.querySelector("#toolHint");
-
-const eventList = document.querySelector("#eventList");
+const playButton = $("#playButton");
+const resetButton = $("#resetButton");
+const growthInput = $("#growthInput");
+const speedInput = $("#speedInput");
 const toolButtons = document.querySelectorAll(".tool");
 
+const ui = {
+  plantCount: $("#plantCount"),
+  herbCount: $("#herbCount"),
+  predCount: $("#predCount"),
+  time: $("#timeText"),
+  state: $("#runState"),
+  hint: $("#toolHint"),
+  growth: $("#growthValue"),
+  speed: $("#speedValue"),
+  events: $("#eventList"),
+  inspector: $("#inspectorContent"),
+
+  guideButton: $("#guideButton"),
+  guideText: $("#guideText"),
+  guideSteps: [
+    $("#guideStep1"),
+    $("#guideStep2"),
+    $("#guideStep3")
+  ],
+
+  challengePanel: $("#challengePanel"),
+  challengeButton: $("#challengeButton"),
+  challengeStatus: $("#challengeStatus"),
+  challengeTime: $("#challengeTime"),
+  challengeProgress: $("#challengeProgress"),
+  challengeMessage: $("#challengeMessage")
+};
+
 // ========================================
-// 2. 基本参数
-// 后续调试主要修改这一部分
+// 2. 原版生态参数：保持不变
 // ========================================
 
 const CONFIG = {
@@ -70,7 +84,8 @@ const CONFIG = {
 const COLORS = {
   plant: "#398653",
   herbivore: "#387aba",
-  predator: "#c57030"
+  predator: "#c57030",
+  observe: "#28694c"
 };
 
 const TOOL_NAMES = {
@@ -79,8 +94,11 @@ const TOOL_NAMES = {
   predator: "捕食者"
 };
 
+const STEP = 1 / 30;
+const CHALLENGE_SECONDS = 60;
+
 // ========================================
-// 3. 保存世界状态
+// 3. 世界与交互状态
 // ========================================
 
 let plants = [];
@@ -88,27 +106,40 @@ let herbivores = [];
 let predators = [];
 
 let running = false;
-let selectedTool = "plant";
+let selectedTool = "observe";
+let selectedAnimal = null;
+let nextAnimalId = 1;
 
 let simulationTime = 0;
 let plantBudget = 0;
-
 let history = [];
 let historyClock = 0;
 
 let events = [];
 let eventTimes = {};
 
-let pointer = {
+let previousTimestamp = null;
+let accumulator = 0;
+let interfaceClock = 0;
+
+const pointer = {
   x: 0,
   y: 0,
   inside: false
 };
 
-let previousTimestamp = null;
-let accumulator = 0;
+// step 为 0、1、2 时分别等待三个引导操作。
+const guide = {
+  active: false,
+  step: 0,
+  completed: false
+};
 
-const STEP = 1 / 30;
+const challenge = {
+  active: false,
+  completed: false,
+  elapsed: 0
+};
 
 // ========================================
 // 4. 通用工具
@@ -151,6 +182,16 @@ function findNearest(animal, items, sense) {
   return target;
 }
 
+function getAnimals(type) {
+  return type === "herbivore" ? herbivores : predators;
+}
+
+function getAnimalLimit(type) {
+  return type === "herbivore"
+    ? CONFIG.maxHerbivores
+    : CONFIG.maxPredators;
+}
+
 function addEvent(message, key = message, interval = 6) {
   const lastTime = eventTimes[key];
 
@@ -162,20 +203,18 @@ function addEvent(message, key = message, interval = 6) {
   }
 
   eventTimes[key] = simulationTime;
-
   events.unshift({
     time: Math.floor(simulationTime),
     message
   });
 
   events = events.slice(0, 6);
-
-  eventList.innerHTML = "";
+  ui.events.replaceChildren();
 
   for (const event of events) {
     const li = document.createElement("li");
     li.textContent = `${event.time} 秒：${event.message}`;
-    eventList.appendChild(li);
+    ui.events.appendChild(li);
   }
 }
 
@@ -195,6 +234,7 @@ function createAnimal(type, x, y) {
   const settings = CONFIG[type];
 
   return {
+    id: nextAnimalId++,
     type,
     x,
     y,
@@ -202,48 +242,55 @@ function createAnimal(type, x, y) {
     turnClock: randomBetween(0.3, 1.5),
     energy: settings.energyStart,
     cooldown: settings.birthCooldown * randomBetween(0.5, 1),
-    flash: 0
+    flash: 0,
+    deathReason: ""
   };
 }
 
 function addEntity(type, x, y, manual = false) {
+  if (!Object.hasOwn(TOOL_NAMES, type)) return false;
+
   x = clamp(x, 12, world.width - 12);
   y = clamp(y, 12, world.height - 12);
 
+  const items = type === "plant" ? plants : getAnimals(type);
+  const limit = type === "plant"
+    ? CONFIG.maxPlants
+    : getAnimalLimit(type);
+
+  if (items.length >= limit) {
+    if (manual) {
+      addEvent(
+        `${TOOL_NAMES[type]}已达到数量上限。`,
+        `${type}-limit`,
+        0
+      );
+    }
+
+    return false;
+  }
+
   if (type === "plant") {
-    if (plants.length >= CONFIG.maxPlants) {
-      if (manual) addEvent("植物已达到数量上限。", "plant-limit", 0);
-      return false;
-    }
-
-    plants.push(createPlant(x, y));
-  }
-
-  if (type === "herbivore") {
-    if (herbivores.length >= CONFIG.maxHerbivores) {
-      if (manual) addEvent("食草动物已达到数量上限。", "herb-limit", 0);
-      return false;
-    }
-
-    herbivores.push(createAnimal(type, x, y));
-  }
-
-  if (type === "predator") {
-    if (predators.length >= CONFIG.maxPredators) {
-      if (manual) addEvent("捕食者已达到数量上限。", "pred-limit", 0);
-      return false;
-    }
-
-    predators.push(createAnimal(type, x, y));
+    items.push(createPlant(x, y));
+  } else {
+    items.push(createAnimal(type, x, y));
   }
 
   if (manual) {
-    addEvent(`手动添加了${TOOL_NAMES[type]}。`, "manual-add", 0);
+    addEvent(
+      `手动添加了${TOOL_NAMES[type]}。`,
+      "manual-add",
+      0
+    );
+
+    advanceGuide(type);
   }
 
   return true;
 }
 
+// 第 1 / 4 部分结束。
+// 下一部分直接接在此行下面。
 // ========================================
 // 6. 动物移动
 // ========================================
@@ -280,31 +327,27 @@ function moveAnimal(animal, target, settings, dt) {
 }
 
 // ========================================
-// 7. 更新某一类动物
+// 7. 进食、死亡与繁殖
 // ========================================
 
 function updateAnimals(type, dt) {
   const isHerbivore = type === "herbivore";
-
-  const animals = isHerbivore ? herbivores : predators;
+  const animals = getAnimals(type);
   const food = isHerbivore ? plants : herbivores;
-
   const settings = CONFIG[type];
-
-  const limit = isHerbivore
-    ? CONFIG.maxHerbivores
-    : CONFIG.maxPredators;
-
+  const limit = getAnimalLimit(type);
   const newborns = [];
 
   for (let i = animals.length - 1; i >= 0; i--) {
     const animal = animals[i];
 
     animal.energy -= settings.energyLoss * dt;
-    animal.cooldown -= dt;
+    animal.cooldown = Math.max(0, animal.cooldown - dt);
     animal.flash = Math.max(0, animal.flash - dt);
 
     if (animal.energy <= 0) {
+      animal.energy = 0;
+      animal.deathReason = "能量耗尽";
       animals.splice(i, 1);
 
       addEvent(
@@ -317,7 +360,6 @@ function updateAnimals(type, dt) {
     }
 
     const target = findNearest(animal, food, settings.sense);
-
     moveAnimal(animal, target, settings, dt);
 
     const eatDistance = isHerbivore ? 12 : 16;
@@ -329,8 +371,11 @@ function updateAnimals(type, dt) {
       const foodIndex = food.indexOf(target);
 
       if (foodIndex !== -1) {
-        food.splice(foodIndex, 1);
+        if (!isHerbivore) {
+          target.deathReason = "被捕食者捕获";
+        }
 
+        food.splice(foodIndex, 1);
         animal.energy += settings.foodEnergy;
         animal.flash = 0.25;
 
@@ -355,8 +400,16 @@ function updateAnimals(type, dt) {
 
       const baby = createAnimal(
         type,
-        clamp(animal.x + randomBetween(-12, 12), 12, world.width - 12),
-        clamp(animal.y + randomBetween(-12, 12), 12, world.height - 12)
+        clamp(
+          animal.x + randomBetween(-12, 12),
+          12,
+          world.width - 12
+        ),
+        clamp(
+          animal.y + randomBetween(-12, 12),
+          12,
+          world.height - 12
+        )
       );
 
       baby.flash = 0.6;
@@ -374,7 +427,7 @@ function updateAnimals(type, dt) {
 }
 
 // ========================================
-// 8. 更新整个生态系统
+// 8. 历史记录与世界更新
 // ========================================
 
 function recordHistory() {
@@ -401,7 +454,10 @@ function updateWorld(dt) {
   if (plants.length < CONFIG.maxPlants) {
     plantBudget += growthRate * dt;
 
-    while (plantBudget >= 1 && plants.length < CONFIG.maxPlants) {
+    while (
+      plantBudget >= 1 &&
+      plants.length < CONFIG.maxPlants
+    ) {
       const position = randomPosition();
       addEntity("plant", position.x, position.y);
       plantBudget -= 1;
@@ -415,7 +471,7 @@ function updateWorld(dt) {
 
   if (previousHerbCount > 0 && herbivores.length === 0) {
     addEvent(
-      "食草动物已经消失。可以暂停后手动补充。",
+      "食草动物已经消失，可以手动补充。",
       "herb-extinct",
       0
     );
@@ -423,11 +479,13 @@ function updateWorld(dt) {
 
   if (previousPredCount > 0 && predators.length === 0) {
     addEvent(
-      "捕食者已经消失。可以补充，也可以继续观察。",
+      "捕食者已经消失，可以补充或继续观察。",
       "pred-extinct",
       0
     );
   }
+
+  updateChallenge(dt);
 
   historyClock += dt;
 
@@ -438,14 +496,206 @@ function updateWorld(dt) {
 }
 
 // ========================================
-// 9. 绘制生物和生态区域
+// 9. 新手引导
+// ========================================
+
+function startGuide() {
+  guide.active = true;
+  guide.completed = false;
+  guide.step = 0;
+
+  running = false;
+  accumulator = 0;
+
+  selectTool("plant");
+
+  addEvent(
+    "引导开始：先在生态区域添加一株植物。",
+    "guide-start",
+    0
+  );
+
+  updateInterface();
+}
+
+function advanceGuide(action) {
+  if (!guide.active) return;
+
+  if (guide.step === 0 && action === "plant") {
+    guide.step = 1;
+    selectTool("herbivore");
+  } else if (guide.step === 1 && action === "herbivore") {
+    guide.step = 2;
+  } else if (guide.step === 2 && action === "play") {
+    guide.step = 3;
+    guide.active = false;
+    guide.completed = true;
+
+    addEvent(
+      "引导完成！试试暂停后使用观察工具查看动物。",
+      "guide-complete",
+      0
+    );
+  }
+
+  updateInterface();
+}
+
+function updateGuideInterface() {
+  const messages = [
+    "第 1 步：已选中植物工具，请点击生态区域添加一株植物。",
+    "第 2 步：已选中食草动物工具，请点击生态区域添加一只。",
+    "第 3 步：点击“开始模拟”，观察动物寻找食物。"
+  ];
+
+  ui.guideButton.textContent =
+    guide.active ? "重新开始引导" : "开始引导";
+
+  if (guide.active) {
+    ui.guideText.textContent = messages[guide.step];
+  } else if (guide.completed) {
+    ui.guideText.textContent =
+      "引导完成。你可以使用观察工具查看能量，或开始共存挑战。";
+    ui.guideButton.textContent = "再做一次引导";
+  } else {
+    ui.guideText.textContent =
+      "引导会带你添加植物、添加食草动物，并启动模拟。也可以直接自由探索。";
+  }
+
+  ui.guideSteps.forEach((element, index) => {
+    element.classList.toggle(
+      "active",
+      guide.active && index === guide.step
+    );
+
+    element.classList.toggle(
+      "done",
+      guide.completed || (guide.active && index < guide.step)
+    );
+  });
+
+  playButton.classList.toggle(
+    "guide-focus",
+    guide.active && guide.step === 2
+  );
+}
+
+// ========================================
+// 10. 连续共存挑战
+// ========================================
+
+function startChallenge() {
+  challenge.active = true;
+  challenge.completed = false;
+  challenge.elapsed = 0;
+
+  addEvent(
+    "共存挑战开始：让三类生物连续共存 60 个模拟秒。",
+    "challenge-start",
+    0
+  );
+
+  // 不清空世界，也不自动开始或暂停模拟。
+  updateInterface();
+}
+
+function updateChallenge(dt) {
+  if (!challenge.active) return;
+
+  const allPresent =
+    plants.length > 0 &&
+    herbivores.length > 0 &&
+    predators.length > 0;
+
+  if (!allPresent) {
+    if (challenge.elapsed > 0) {
+      addEvent(
+        "有一类生物消失，共存挑战的连续计时归零。",
+        "challenge-interrupted",
+        3
+      );
+    }
+
+    challenge.elapsed = 0;
+    return;
+  }
+
+  challenge.elapsed = Math.min(
+    CHALLENGE_SECONDS,
+    challenge.elapsed + dt
+  );
+
+  if (challenge.elapsed >= CHALLENGE_SECONDS - 0.000001) {
+    challenge.elapsed = CHALLENGE_SECONDS;
+    challenge.active = false;
+    challenge.completed = true;
+
+    addEvent(
+      "挑战完成！三类生物已连续共存 60 个模拟秒。",
+      "challenge-complete",
+      0
+    );
+  }
+}
+
+function updateChallengeInterface() {
+  ui.challengeProgress.max = CHALLENGE_SECONDS;
+  ui.challengeProgress.value = challenge.elapsed;
+
+  ui.challengeTime.textContent =
+    `${Math.floor(challenge.elapsed)} / ${CHALLENGE_SECONDS} 模拟秒`;
+
+  ui.challengePanel.classList.toggle(
+    "is-complete",
+    challenge.completed
+  );
+
+  ui.challengeButton.textContent =
+    challenge.active || challenge.completed
+      ? "重新开始挑战"
+      : "开始挑战";
+
+  if (challenge.completed) {
+    ui.challengeStatus.textContent = "挑战完成";
+    ui.challengeMessage.textContent =
+      "你已完成共存维护。可以继续观察，但这不代表系统已达到自行维持的平衡。";
+  } else if (challenge.active) {
+    const allPresent =
+      plants.length > 0 &&
+      herbivores.length > 0 &&
+      predators.length > 0;
+
+    ui.challengeStatus.textContent = !allPresent
+      ? "等待三类生物齐全"
+      : running
+        ? "正在累计连续共存时间"
+        : "模拟已暂停，挑战计时暂停";
+
+    ui.challengeMessage.textContent =
+      "允许补充生物；任意一类消失，连续共存进度归零。";
+  } else {
+    ui.challengeStatus.textContent = "尚未开始";
+    ui.challengeMessage.textContent =
+      "开始挑战不会清空当前世界。请点击“开始挑战”参与。";
+  }
+}
+
+// 第 2 / 4 部分结束。
+// ========================================
+// 11. 绘制动物
 // ========================================
 
 function drawAnimal(animal) {
-  const isHerbivore = animal.type === "herbivore";
-
   ctx.save();
   ctx.translate(animal.x, animal.y);
+
+  if (animal === selectedAnimal) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    ctx.strokeStyle = COLORS.observe;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
 
   if (animal.flash > 0) {
     ctx.beginPath();
@@ -458,8 +708,9 @@ function drawAnimal(animal) {
   ctx.rotate(animal.angle);
   ctx.fillStyle = COLORS[animal.type];
 
-  if (isHerbivore) {
-    ctx.beginPath();
+  ctx.beginPath();
+
+  if (animal.type === "herbivore") {
     ctx.arc(0, 0, 7, 0, Math.PI * 2);
     ctx.fill();
 
@@ -468,7 +719,6 @@ function drawAnimal(animal) {
     ctx.arc(3, -2, 1.6, 0, Math.PI * 2);
     ctx.fill();
   } else {
-    ctx.beginPath();
     ctx.moveTo(10, 0);
     ctx.lineTo(-7, -7);
     ctx.lineTo(-7, 7);
@@ -479,9 +729,12 @@ function drawAnimal(animal) {
   ctx.restore();
 }
 
+// ========================================
+// 12. 绘制世界
+// ========================================
+
 function drawWorld() {
   ctx.clearRect(0, 0, world.width, world.height);
-
   ctx.fillStyle = "#f6f8f0";
   ctx.fillRect(0, 0, world.width, world.height);
 
@@ -510,47 +763,44 @@ function drawWorld() {
     ctx.fill();
   }
 
-  for (const animal of herbivores) {
-    drawAnimal(animal);
-  }
-
-  for (const animal of predators) {
-    drawAnimal(animal);
-  }
+  for (const animal of herbivores) drawAnimal(animal);
+  for (const animal of predators) drawAnimal(animal);
 
   if (pointer.inside) {
     ctx.save();
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = COLORS[selectedTool];
     ctx.lineWidth = 2;
-
     ctx.beginPath();
-    ctx.arc(pointer.x, pointer.y, 14, 0, Math.PI * 2);
+    ctx.arc(
+      pointer.x,
+      pointer.y,
+      selectedTool === "observe" ? 20 : 14,
+      0,
+      Math.PI * 2
+    );
     ctx.stroke();
-
     ctx.restore();
   }
 
   if (!running) {
     ctx.fillStyle = "rgba(36, 53, 44, 0.8)";
     ctx.font = "16px sans-serif";
-    ctx.fillText("已暂停 · 可以继续添加生物", 18, 28);
+    ctx.fillText("已暂停 · 可以观察或添加生物", 18, 28);
   }
 }
 
 // ========================================
-// 10. 绘制数量变化曲线
+// 13. 绘制数量变化
 // ========================================
 
 function drawChart() {
   const width = chart.width;
   const height = chart.height;
-
   const left = 42;
   const right = 16;
   const top = 16;
   const bottom = 32;
-
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
@@ -571,10 +821,10 @@ function drawChart() {
 
   chartCtx.font = "12px sans-serif";
   chartCtx.textAlign = "right";
+  chartCtx.lineWidth = 1;
 
   for (let i = 0; i <= 4; i++) {
     const y = top + (plotHeight * i) / 4;
-    const value = Math.round(maxValue * (1 - i / 4));
 
     chartCtx.strokeStyle = "#e4e9e1";
     chartCtx.beginPath();
@@ -583,7 +833,11 @@ function drawChart() {
     chartCtx.stroke();
 
     chartCtx.fillStyle = "#647469";
-    chartCtx.fillText(String(value), left - 8, y + 4);
+    chartCtx.fillText(
+      String(Math.round(maxValue * (1 - i / 4))),
+      left - 8,
+      y + 4
+    );
   }
 
   if (history.length === 0) return;
@@ -606,15 +860,11 @@ function drawChart() {
     history.forEach((sample, index) => {
       const x =
         left + ((sample.time - firstTime) / timeRange) * plotWidth;
-
       const y =
         top + plotHeight - (sample[key] / maxValue) * plotHeight;
 
-      if (index === 0) {
-        chartCtx.moveTo(x, y);
-      } else {
-        chartCtx.lineTo(x, y);
-      }
+      if (index === 0) chartCtx.moveTo(x, y);
+      else chartCtx.lineTo(x, y);
     });
 
     chartCtx.stroke();
@@ -622,12 +872,7 @@ function drawChart() {
 
   chartCtx.fillStyle = "#647469";
   chartCtx.textAlign = "left";
-  chartCtx.fillText(
-    `${Math.floor(firstTime)} 秒`,
-    left,
-    height - 8
-  );
-
+  chartCtx.fillText(`${Math.floor(firstTime)} 秒`, left, height - 8);
   chartCtx.textAlign = "right";
   chartCtx.fillText(
     `${Math.floor(lastTime)} 秒`,
@@ -637,45 +882,206 @@ function drawChart() {
 }
 
 // ========================================
-// 11. 更新网页数字和按钮
+// 14. 个体状态面板
+// ========================================
+
+function updateInspector() {
+  const animal = selectedAnimal;
+
+  if (!animal) {
+    ui.inspector.textContent =
+      "选择“观察动物”，再点击一只动物。建议先暂停，方便选中。";
+    return;
+  }
+
+  ui.inspector.replaceChildren();
+
+  const title = document.createElement("p");
+  title.className = "inspector-name";
+  title.textContent = `${TOOL_NAMES[animal.type]} · #${animal.id}`;
+  ui.inspector.appendChild(title);
+
+  if (animal.deathReason) {
+    const note = document.createElement("p");
+    note.className = "inspector-status";
+    note.textContent =
+      `该个体已离开世界：${animal.deathReason}。请选择其他动物继续观察。`;
+    ui.inspector.appendChild(note);
+    return;
+  }
+
+  const settings = CONFIG[animal.type];
+  const grid = document.createElement("div");
+  grid.className = "inspector-grid";
+
+  const entries = [
+    ["当前能量", animal.energy.toFixed(1)],
+    ["繁殖能量门槛", String(settings.birthEnergy)],
+    ["冷却剩余", `${Math.max(0, animal.cooldown).toFixed(1)} 模拟秒`],
+    ["同类数量", `${getAnimals(animal.type).length} / ${getAnimalLimit(animal.type)}`]
+  ];
+
+  for (const [label, value] of entries) {
+    const item = document.createElement("div");
+    item.className = "inspector-item";
+
+    const name = document.createElement("span");
+    name.textContent = label;
+
+    const number = document.createElement("strong");
+    number.textContent = value;
+
+    item.append(name, number);
+    grid.appendChild(item);
+  }
+
+  ui.inspector.appendChild(grid);
+
+  const reasons = [];
+
+  if (animal.energy < settings.birthEnergy) {
+    reasons.push("能量未达到繁殖门槛");
+  }
+
+  if (animal.cooldown > 0) {
+    reasons.push("繁殖冷却尚未结束");
+  }
+
+  if (getAnimals(animal.type).length >= getAnimalLimit(animal.type)) {
+    reasons.push("同类数量已达上限");
+  }
+
+  const status = document.createElement("p");
+  status.className = "inspector-status";
+  status.textContent = reasons.length
+    ? `尚不能繁殖：${reasons.join("；")}。`
+    : "当前满足繁殖条件，将在后续模拟更新中再次检查。";
+
+  ui.inspector.appendChild(status);
+}
+
+// 第 3 / 4 部分结束。
+// 第四部分直接接在此行下面。
+// ========================================
+// 15. 更新界面与选择工具
 // ========================================
 
 function updateInterface() {
-  plantCount.textContent = plants.length;
-  herbCount.textContent = herbivores.length;
-  predCount.textContent = predators.length;
+  ui.plantCount.textContent = plants.length;
+  ui.herbCount.textContent = herbivores.length;
+  ui.predCount.textContent = predators.length;
 
-  timeText.textContent = `${Math.floor(simulationTime)} 秒`;
+  ui.time.textContent = `${Math.floor(simulationTime)} 模拟秒`;
+  ui.state.textContent = running ? "运行中" : "已暂停";
+  ui.state.classList.toggle("is-running", running);
 
   playButton.textContent = running ? "暂停模拟" : "开始模拟";
-  runState.textContent = running ? "运行中" : "已暂停";
+  ui.growth.textContent = `${growthInput.value} 株/模拟秒`;
+  ui.speed.textContent = `${speedInput.value}×`;
 
-  growthValue.textContent = `${growthInput.value} 个/秒`;
-  speedValue.textContent = `${speedInput.value}×`;
+  ui.hint.textContent = selectedTool === "observe"
+    ? "当前工具：观察动物 · 点击动物查看状态"
+    : `当前工具：添加${TOOL_NAMES[selectedTool]}`;
 
-  toolHint.textContent =
-    `当前工具：添加${TOOL_NAMES[selectedTool]}`;
+  updateInspector();
+  updateGuideInterface();
+  updateChallengeInterface();
 }
 
 function selectTool(type) {
+  if (
+    type !== "observe" &&
+    !Object.hasOwn(TOOL_NAMES, type)
+  ) {
+    return;
+  }
+
   selectedTool = type;
 
   for (const button of toolButtons) {
     const active = button.dataset.tool === type;
-
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
+
+  world.style.cursor =
+    type === "observe" ? "pointer" : "crosshair";
 
   updateInterface();
 }
 
 // ========================================
-// 12. 重置世界
+// 16. 从实际配置生成数值规则
+// ========================================
+
+function fillRuleValues(selector, entries) {
+  const container = $(selector);
+  container.replaceChildren();
+
+  for (const [label, value] of entries) {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+
+    const name = document.createElement("dt");
+    name.textContent = label;
+
+    const content = document.createElement("dd");
+    content.textContent = String(value);
+
+    row.append(name, content);
+    container.appendChild(row);
+  }
+}
+
+function renderRules() {
+  fillRuleValues("#plantRules", [
+    ["初始数量", `${CONFIG.initialPlants} 株`],
+    ["数量上限", `${CONFIG.maxPlants} 株`],
+    ["当前生成速度", `${growthInput.value} 株/模拟秒`],
+    ["生成位置", "生态区域内随机位置"],
+    ["消失原因", "被食草动物吃掉"]
+  ]);
+
+  for (const type of ["herbivore", "predator"]) {
+    const settings = CONFIG[type];
+    const isHerbivore = type === "herbivore";
+
+    fillRuleValues(
+      isHerbivore ? "#herbivoreRules" : "#predatorRules",
+      [
+        [
+          "初始数量",
+          `${isHerbivore
+            ? CONFIG.initialHerbivores
+            : CONFIG.initialPredators} 只`
+        ],
+        ["数量上限", `${getAnimalLimit(type)} 只`],
+        ["初始能量", settings.energyStart],
+        ["每模拟秒耗能", settings.energyLoss],
+        ["每次进食增能", `+${settings.foodEnergy}`],
+        ["繁殖能量门槛", `≥ ${settings.birthEnergy}`],
+        ["亲代繁殖耗能", settings.birthCost],
+        ["繁殖后冷却", `${settings.birthCooldown} 模拟秒`],
+        [
+          "创建时初始冷却",
+          `${settings.birthCooldown * 0.5}～${settings.birthCooldown} 模拟秒`
+        ],
+        ["每次后代数量", "1 只，无需配偶"],
+        ["移动速度", `${settings.speed} 画布单位/模拟秒`],
+        ["感知半径", `${settings.sense} 画布单位`]
+      ]
+    );
+  }
+}
+
+// ========================================
+// 17. 重置世界
 // ========================================
 
 function resetWorld() {
   running = false;
+  selectedAnimal = null;
+  nextAnimalId = 1;
 
   plants = [];
   herbivores = [];
@@ -684,36 +1090,47 @@ function resetWorld() {
   simulationTime = 0;
   plantBudget = 0;
   historyClock = 0;
+  interfaceClock = 0;
   accumulator = 0;
+  previousTimestamp = null;
 
   history = [];
   events = [];
   eventTimes = {};
+  ui.events.replaceChildren();
+
+  guide.active = false;
+  guide.completed = false;
+  guide.step = 0;
+
+  challenge.active = false;
+  challenge.completed = false;
+  challenge.elapsed = 0;
+
+  pointer.inside = false;
 
   growthInput.value = "4";
   speedInput.value = "1";
 
-  selectTool("plant");
+  const initialGroups = [
+    ["plant", CONFIG.initialPlants],
+    ["herbivore", CONFIG.initialHerbivores],
+    ["predator", CONFIG.initialPredators]
+  ];
 
-  for (let i = 0; i < CONFIG.initialPlants; i++) {
-    const position = randomPosition();
-    addEntity("plant", position.x, position.y);
+  for (const [type, count] of initialGroups) {
+    for (let i = 0; i < count; i++) {
+      const position = randomPosition();
+      addEntity(type, position.x, position.y);
+    }
   }
 
-  for (let i = 0; i < CONFIG.initialHerbivores; i++) {
-    const position = randomPosition();
-    addEntity("herbivore", position.x, position.y);
-  }
-
-  for (let i = 0; i < CONFIG.initialPredators; i++) {
-    const position = randomPosition();
-    addEntity("predator", position.x, position.y);
-  }
-
+  selectTool("observe");
+  renderRules();
   recordHistory();
 
   addEvent(
-    "世界已准备好。点击“开始模拟”，或先添加生物。",
+    "世界已准备好。可以开始模拟、参与引导，或选择动物观察。",
     "reset",
     0
   );
@@ -724,7 +1141,7 @@ function resetWorld() {
 }
 
 // ========================================
-// 13. 鼠标和按钮交互
+// 18. 画布交互
 // ========================================
 
 function getCanvasPosition(event) {
@@ -738,7 +1155,6 @@ function getCanvasPosition(event) {
 
 world.addEventListener("pointermove", (event) => {
   const position = getCanvasPosition(event);
-
   pointer.x = position.x;
   pointer.y = position.y;
   pointer.inside = true;
@@ -748,18 +1164,42 @@ world.addEventListener("pointerleave", () => {
   pointer.inside = false;
 });
 
+world.addEventListener("pointercancel", () => {
+  pointer.inside = false;
+});
+
 world.addEventListener("click", (event) => {
   const position = getCanvasPosition(event);
 
-  addEntity(
-    selectedTool,
-    position.x,
-    position.y,
-    true
-  );
+  if (selectedTool === "observe") {
+    // 手机画布显示较小时，适当扩大点击命中范围。
+    const rect = world.getBoundingClientRect();
+    const hitRadius = Math.max(
+      20,
+      12 * world.width / Math.max(1, rect.width)
+    );
+
+    selectedAnimal = findNearest(
+      position,
+      [...herbivores, ...predators],
+      hitRadius
+    );
+  } else {
+    addEntity(
+      selectedTool,
+      position.x,
+      position.y,
+      true
+    );
+  }
 
   updateInterface();
+  drawWorld();
 });
+
+// ========================================
+// 19. 按钮与滑块
+// ========================================
 
 for (const button of toolButtons) {
   button.addEventListener("click", () => {
@@ -770,32 +1210,47 @@ for (const button of toolButtons) {
 playButton.addEventListener("click", () => {
   running = !running;
   accumulator = 0;
+  previousTimestamp = null;
+
+  if (running) {
+    advanceGuide("play");
+  }
+
   updateInterface();
 });
 
 resetButton.addEventListener("click", () => {
   const confirmed = window.confirm(
-    "确定重置吗？当前生物和模拟记录将被清除。"
+    "确定重置吗？生物、模拟记录、引导和挑战进度都将被清除。"
   );
 
-  if (confirmed) resetWorld();
+  if (confirmed) {
+    resetWorld();
+  }
 });
 
-growthInput.addEventListener("input", updateInterface);
+ui.guideButton.addEventListener("click", startGuide);
+ui.challengeButton.addEventListener("click", startChallenge);
 
-speedInput.addEventListener("input", () => {
-  accumulator = 0;
+growthInput.addEventListener("input", () => {
+  renderRules();
   updateInterface();
 });
 
-// 切换浏览器标签页后，不补算离开期间的全部时间。
+speedInput.addEventListener("input", () => {
+  accumulator = 0;
+  previousTimestamp = null;
+  updateInterface();
+});
+
 document.addEventListener("visibilitychange", () => {
+  // 不补算离开标签页期间的时间。
   previousTimestamp = null;
   accumulator = 0;
 });
 
 // ========================================
-// 14. 动画循环
+// 20. 动画循环与启动
 // ========================================
 
 function frame(timestamp) {
@@ -803,8 +1258,9 @@ function frame(timestamp) {
     previousTimestamp = timestamp;
   }
 
-  const realDelta = Math.min(
+  const realDelta = clamp(
     (timestamp - previousTimestamp) / 1000,
+    0,
     0.1
   );
 
@@ -820,11 +1276,21 @@ function frame(timestamp) {
   }
 
   drawWorld();
-  drawChart();
-  updateInterface();
+
+  // 数字、观察面板和图表每秒最多更新约 10 次，
+  // 避免每一帧都重复创建界面元素。
+  interfaceClock += realDelta;
+
+  if (interfaceClock >= 0.1) {
+    interfaceClock = 0;
+    updateInterface();
+    drawChart();
+  }
 
   requestAnimationFrame(frame);
 }
 
 resetWorld();
 requestAnimationFrame(frame);
+
+// 第 4 / 4 部分结束，app.js 全部代码结束。
