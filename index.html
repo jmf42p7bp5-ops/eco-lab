@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>微型生态实验室</title>
+  <meta
+    name="description"
+    content="投放生物、调整环境、观察能量与繁殖，探索微型生态系统。"
+  >
+
+  <title>微型生态实验室 · 共存计划</title>
 
   <link rel="stylesheet" href="./style.css">
   <script src="./app.js" defer></script>
@@ -13,30 +18,148 @@
 <body>
   <main class="page">
 
+    <!-- 页面标题 -->
     <header class="page-header">
       <div>
-        <p class="eyebrow">INTERACTIVE ECOLOGY LAB</p>
+        <p class="eyebrow">A SMALL WORLD, CONNECTED.</p>
         <h1>微型生态实验室</h1>
         <p class="subtitle">
-          放入生命，改变条件，观察一个小世界如何变化。
+          投放生命，读懂规则，尝试让一个小世界持续运转。
         </p>
       </div>
 
-      <span class="version-tag">交互原型 V1.0</span>
+      <a class="header-link" href="#rulesPanel">
+        查看物种规则 ↗
+      </a>
     </header>
 
-    <section class="intro">
-      <strong>第一次使用：</strong>
-      点击“开始模拟”观察变化；选择右侧生物后，点击生态区域即可添加。
-      你可以尝试让三类生物持续共存，也可以自由探索。
+    <!-- 基础说明 -->
+    <section class="intro" aria-labelledby="introTitle">
+      <div>
+        <p class="section-kicker">你的角色 · 生态观察员</p>
+        <h2 id="introTitle">不是让数量越多越好，而是观察它们如何相互影响。</h2>
+        <p>
+          植物被食草动物吃掉，食草动物被捕食者捕获。
+          动物需要进食维持能量，满足条件后才能繁殖。
+        </p>
+      </div>
+
+      <div class="food-chain" aria-label="食物关系，箭头表示被谁吃">
+        <span class="species-chip plant-chip">● 植物</span>
+        <span aria-hidden="true">→</span>
+        <span class="species-chip herb-chip">● 食草动物</span>
+        <span aria-hidden="true">→</span>
+        <span class="species-chip pred-chip">▲ 捕食者</span>
+      </div>
+
+      <p class="help chain-caption">
+        箭头表示“被谁吃”，不是生物的进化顺序。
+      </p>
     </section>
 
+    <!-- 新手引导 -->
+    <section class="guide-panel" aria-labelledby="guideTitle">
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker">FIRST STEPS</p>
+          <h2 id="guideTitle">第一次来？先完成三个小步骤</h2>
+        </div>
+
+        <button id="guideButton" class="secondary" type="button">
+          开始引导
+        </button>
+      </div>
+
+      <p id="guideText" class="guide-text" aria-live="polite">
+        引导会带你添加植物、添加食草动物，并启动模拟。
+        也可以跳过引导，直接自由探索。
+      </p>
+
+      <ol class="guide-steps" aria-label="新手引导步骤">
+        <li id="guideStep1">1. 添加一株植物</li>
+        <li id="guideStep2">2. 添加一只食草动物</li>
+        <li id="guideStep3">3. 启动并观察模拟</li>
+      </ol>
+    </section>
+
+    <!-- 挑战任务 -->
+    <section
+      id="challengePanel"
+      class="challenge-panel"
+      aria-labelledby="challengeTitle"
+    >
+      <div class="challenge-heading">
+        <div>
+          <p class="section-kicker">MISSION 01 · 共存维护</p>
+          <h2 id="challengeTitle">让三类生物连续共存 60 个模拟秒</h2>
+          <p class="help">
+            允许补充生物和调整环境。暂停时不计时；
+            任意一类数量降为 0，连续共存进度归零。
+          </p>
+        </div>
+
+        <button id="challengeButton" class="primary" type="button">
+          开始挑战
+        </button>
+      </div>
+
+      <div class="challenge-progress-row">
+        <span id="challengeStatus">尚未开始 · 也可以直接自由探索</span>
+        <strong id="challengeTime">0 / 60 模拟秒</strong>
+      </div>
+
+      <progress
+        id="challengeProgress"
+        value="0"
+        max="60"
+        aria-label="连续共存挑战进度"
+      >0%</progress>
+
+      <p id="challengeMessage" class="help" aria-live="polite">
+        开始挑战不会清空当前世界。挑战成功后仍可继续观察。
+      </p>
+    </section>
+
+    <!-- 实时数量 -->
+    <section class="stats-grid" aria-label="实时生物数量">
+      <div class="stat-card plant-stat">
+        <div class="stat-label">
+          <span>● 植物</span>
+          <small>生产者</small>
+        </div>
+        <strong id="plantCount">0</strong>
+        <span class="stat-caption">最多 240 株</span>
+      </div>
+
+      <div class="stat-card herb-stat">
+        <div class="stat-label">
+          <span>● 食草动物</span>
+          <small>初级消费者</small>
+        </div>
+        <strong id="herbCount">0</strong>
+        <span class="stat-caption">最多 70 只</span>
+      </div>
+
+      <div class="stat-card pred-stat">
+        <div class="stat-label">
+          <span>▲ 捕食者</span>
+          <small>次级消费者</small>
+        </div>
+        <strong id="predCount">0</strong>
+        <span class="stat-caption">最多 18 只</span>
+      </div>
+    </section>
+
+    <!-- 模拟区与控制区 -->
     <div class="workspace">
 
-      <section class="simulation-panel">
-
+      <section class="simulation-panel" aria-labelledby="worldTitle">
         <div class="panel-heading">
-          <h2>生态区域</h2>
+          <div>
+            <p class="section-kicker">LIVE ECOSYSTEM</p>
+            <h2 id="worldTitle">你的微型世界</h2>
+          </div>
+
           <span id="runState" class="state-tag">已暂停</span>
         </div>
 
@@ -45,62 +168,102 @@
             id="world"
             width="900"
             height="540"
-            aria-label="生态模拟区域，使用鼠标点击添加生物"
-          ></canvas>
+            aria-label="生态模拟区域。选择添加工具后点击放置生物，选择观察工具后点击动物查看状态。"
+          >
+            当前浏览器不支持画布，请尝试使用较新的浏览器。
+          </canvas>
         </div>
 
         <div class="world-footer">
-          <span id="toolHint">当前工具：添加植物</span>
-          <span>模拟时间：<strong id="timeText">0 秒</strong></span>
+          <span id="toolHint">当前工具：观察动物</span>
+          <span>
+            模拟时间：
+            <strong id="timeText">0 模拟秒</strong>
+          </span>
         </div>
 
         <div class="legend">
           <span><i class="dot plant-color"></i>植物</span>
           <span><i class="dot herb-color"></i>食草动物</span>
           <span><i class="triangle"></i>捕食者</span>
+          <span class="help">短暂金色圆环：进食或新生反馈</span>
         </div>
 
+        <!-- 个体观察 -->
+        <section class="inspector" aria-labelledby="inspectorTitle">
+          <div class="inspector-heading">
+            <h3 id="inspectorTitle">个体观察</h3>
+            <span class="mini-tag">看见数量背后的状态</span>
+          </div>
+
+          <div id="inspectorContent" aria-live="polite">
+            <p class="help">
+              选择“观察动物”，再点击一只动物。
+              建议先暂停，方便选中移动中的个体。
+            </p>
+          </div>
+        </section>
       </section>
 
-      <aside class="controls">
+      <aside class="controls" aria-label="生态模拟控制">
 
         <section class="control-section">
-          <h2>1. 添加生命</h2>
-          <p class="help">先选类型，再点击左侧生态区域。</p>
+          <p class="section-kicker">01 · 选择工具</p>
+          <h2>观察或添加生命</h2>
+          <p class="help">
+            先选工具，再点击生态区域。手机上直接轻点即可。
+          </p>
 
           <div class="tool-list">
             <button
               class="tool active"
-              data-tool="plant"
+              type="button"
+              data-tool="observe"
               aria-pressed="true"
             >
-              添加植物
+              <span>◎ 观察动物</span>
+              <small>查看能量与繁殖条件</small>
             </button>
 
             <button
               class="tool"
+              type="button"
+              data-tool="plant"
+              aria-pressed="false"
+            >
+              <span>● 添加植物</span>
+              <small>为食草动物补充食物</small>
+            </button>
+
+            <button
+              class="tool"
+              type="button"
               data-tool="herbivore"
               aria-pressed="false"
             >
-              添加食草动物
+              <span>● 添加食草动物</span>
+              <small>以植物为食，也会被捕食</small>
             </button>
 
             <button
               class="tool"
+              type="button"
               data-tool="predator"
               aria-pressed="false"
             >
-              添加捕食者
+              <span>▲ 添加捕食者</span>
+              <small>捕食食草动物获取能量</small>
             </button>
           </div>
         </section>
 
         <section class="control-section">
-          <h2>2. 调整环境</h2>
+          <p class="section-kicker">02 · 调整环境</p>
+          <h2>改变资源与时间</h2>
 
           <label class="range-label" for="growthInput">
-            植物生长速度
-            <strong id="growthValue">4 个/秒</strong>
+            植物生成速度
+            <strong id="growthValue">4 株/模拟秒</strong>
           </label>
 
           <input
@@ -110,10 +273,12 @@
             max="10"
             step="1"
             value="4"
+            aria-describedby="growthHelp"
           >
 
-          <p class="help">
-            这里的“秒”指模拟时间。植物最多保留 240 个。
+          <p id="growthHelp" class="help">
+            控制系统生成新植物的速度，不会立即改变已有数量。
+            数量达到上限后停止生成。
           </p>
 
           <label class="range-label" for="speedInput">
@@ -128,81 +293,153 @@
             max="4"
             step="1"
             value="1"
+            aria-describedby="speedHelp"
           >
+
+          <p id="speedHelp" class="help">
+            只加快时间推进，不改变能量和繁殖规则。
+            性能允许时，2× 约为现实 1 秒推进 2 个模拟秒。
+          </p>
         </section>
 
         <section class="control-section">
-          <h2>3. 控制模拟</h2>
+          <p class="section-kicker">03 · 控制运行</p>
+          <h2>开始、暂停或重置</h2>
 
           <div class="action-buttons">
-            <button id="playButton" class="primary">
+            <button id="playButton" class="primary" type="button">
               开始模拟
             </button>
 
-            <button id="resetButton" class="secondary">
+            <button id="resetButton" class="secondary" type="button">
               重置世界
             </button>
           </div>
 
           <p class="help">
-            暂停时也能添加生物。重置会恢复初始世界与参数。
+            暂停时也能观察和添加生物。
+            重置会清除当前世界、挑战进度和模拟记录。
           </p>
         </section>
 
         <section class="rule-note">
-          <h3>这个世界的规则</h3>
-
-          <ul>
-            <li>植物持续生长，食草动物寻找并吃掉植物。</li>
-            <li>捕食者寻找并捕食食草动物。</li>
-            <li>动物持续消耗能量，能量耗尽会死亡。</li>
-            <li>能量充足且冷却结束时，动物可以繁殖。</li>
-          </ul>
+          <h3>观察小提示</h3>
+          <p class="help">
+            数量多不一定更稳定。食草动物过多可能消耗大量植物；
+            捕食者也需要足够的猎物维持能量。
+            试着一次只改变一个条件，再观察结果。
+          </p>
         </section>
 
       </aside>
-
     </div>
 
-    <section class="stats-grid" aria-label="实时数量">
-      <div class="stat-card">
-        <span>植物</span>
-        <strong id="plantCount">0</strong>
+    <!-- 详细规则：由 JavaScript 读取 CONFIG 生成真实数值 -->
+    <section
+      id="rulesPanel"
+      class="rules-panel"
+      aria-labelledby="rulesTitle"
+    >
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker">KNOW THE RULES</p>
+          <h2 id="rulesTitle">什么时候繁殖，什么时候死亡？</h2>
+        </div>
+        <span class="mini-tag">数值与模拟使用同一份配置</span>
       </div>
 
-      <div class="stat-card">
-        <span>食草动物</span>
-        <strong id="herbCount">0</strong>
+      <p class="section-description">
+        所有时间均为模拟时间，能量是本程序中的抽象数值。
+        展开卡片查看具体条件。
+      </p>
+
+      <div class="rules-grid">
+        <details class="species-rule plant-rule" open>
+          <summary>● 植物 · 生成与消失</summary>
+          <div id="plantRules" class="rule-content">
+            正在读取植物规则……
+          </div>
+        </details>
+
+        <details class="species-rule herb-rule" open>
+          <summary>● 食草动物 · 进食与繁殖</summary>
+          <div id="herbivoreRules" class="rule-content">
+            正在读取食草动物规则……
+          </div>
+        </details>
+
+        <details class="species-rule pred-rule" open>
+          <summary>▲ 捕食者 · 捕食与繁殖</summary>
+          <div id="predatorRules" class="rule-content">
+            正在读取捕食者规则……
+          </div>
+        </details>
       </div>
 
-      <div class="stat-card">
-        <span>捕食者</span>
-        <strong id="predCount">0</strong>
+      <div class="rule-footnote">
+        <strong>关于繁殖：</strong>
+        本模型采用简化规则，不需要配偶。
+        每次繁殖产生一个后代，后代获得该物种的初始能量，
+        并有自己的初始繁殖冷却。
+        因此它不是严格遵循能量守恒的真实生态模型。
       </div>
     </section>
 
-    <section class="chart-panel">
+    <!-- 数量趋势 -->
+    <section class="chart-panel" aria-labelledby="chartTitle">
       <div class="panel-heading">
-        <h2>数量变化</h2>
-        <span class="help">显示最近约 3 分钟的模拟记录</span>
+        <div>
+          <p class="section-kicker">LOOK FOR PATTERNS</p>
+          <h2 id="chartTitle">数量如何随时间变化？</h2>
+        </div>
+        <span class="help">最近约 3 分钟模拟记录</span>
+      </div>
+
+      <div class="chart-legend legend">
+        <span><i class="dot plant-color"></i>植物</span>
+        <span><i class="dot herb-color"></i>食草动物</span>
+        <span><i class="triangle"></i>捕食者</span>
       </div>
 
       <canvas
         id="chart"
         width="900"
-        height="190"
-        aria-label="三类生物数量随模拟时间变化的折线图"
-      ></canvas>
+        height="220"
+        aria-label="植物、食草动物和捕食者数量随模拟时间变化的折线图"
+      >
+        当前浏览器不支持图表画布。
+      </canvas>
+
+      <p class="chart-caption help">
+        横轴为模拟时间，纵轴为个体数量。
+        三类生物共用纵轴，数量较少的物种曲线可能靠近底部。
+      </p>
     </section>
 
-    <section class="events-panel">
-      <h2>最近事件</h2>
-      <ul id="eventList" aria-live="polite"></ul>
+    <!-- 事件记录 -->
+    <section class="events-panel" aria-labelledby="eventsTitle">
+      <div class="events-heading">
+        <div>
+          <p class="section-kicker">FIELD NOTES</p>
+          <h2 id="eventsTitle">最近发生了什么？</h2>
+        </div>
+        <span class="help">同类频繁事件会合并提醒，并非完整日志</span>
+      </div>
+
+      <ul
+        id="eventList"
+        aria-live="polite"
+        aria-relevant="additions text"
+      ></ul>
     </section>
 
     <footer class="page-footer">
-      本程序是探索物种关系的简化模拟，不用于科学预测。
-      为保证运行流畅，生物数量设置了上限。推荐使用电脑浏览器体验。
+      <strong>微型生态实验室 · 共存计划 V2.0</strong>
+      <p>
+        这是用于探索物种关系的简化交互模拟，不用于科学预测。
+        为保证运行流畅，生物数量设有上限。
+        切换到后台时模拟暂停，不补算离开期间的时间。
+      </p>
     </footer>
 
   </main>
