@@ -4,7 +4,7 @@
 
 【如何开始】
 方式一：打开作品的 GitHub Pages 链接，即可在浏览器中体验。
-作品链接：【在此填写最终网站链接】
+作品链接：【https://jmf42p7bp5-ops.github.io/eco-lab/】
 
 方式二：下载项目文件后，确保 index.html、style.css 和 app.js 位于同一个文件夹，再用浏览器打开 index.html。
 
